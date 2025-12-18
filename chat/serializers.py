@@ -8,7 +8,7 @@ class MessageSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = Message
-        fields = ['id', 'timestamp', 'role', 'content']
+        fields = ['id', 'conversation', 'timestamp', 'role', 'content']
 
 
 class ConversationSerializer(serializers.ModelSerializer):
