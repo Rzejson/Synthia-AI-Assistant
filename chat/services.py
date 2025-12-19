@@ -23,10 +23,10 @@ class OpenAIService(BaseLLMService):
     """
     Implementation of LLM Service using OpenAI API.
     """
-    def __init__(self):
+    def __init__(self, model_name='gpt-5-nano'):
         self.api_key = settings.OPENAI_API_KEY
         self.client = openai.OpenAI(api_key=self.api_key)
-        self.model = "gpt-5-nano"
+        self.model = model_name
 
     def get_response(self, context):
         try:
