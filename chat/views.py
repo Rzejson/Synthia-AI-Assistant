@@ -1,9 +1,7 @@
-from django.conf import settings
 from rest_framework import viewsets
-import openai
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
-
+from .services import OpenAIService
 
 
 class ConversationViewSet(viewsets.ModelViewSet):
@@ -30,7 +28,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         1. Saves the user's message to the database.
         2. Retrives the last 10 messages from the conversation history.
         3. Constructs a prompt including the system instruction and history.
-        4. Sends the request to OpenAI API.
+        4. Sends the context to the LLM Service.
         5. Saves the AI's response (or an error message) as a new message.
 
         :param serializer: The validated serializer instance containing the new message data.
@@ -44,20 +42,10 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         system_prompt = [{"role": "system", "content": "Jesteś Synthią, pomocnym asystentem AI."}]
         history_from_db = [{"role": msg.role, "content": msg.content} for msg in reversed_messages]
-        message_history = system_prompt + history_from_db
+        context = system_prompt + history_from_db
 
-        client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-5-nano",
-                messages=message_history
-            )
-
-            ai_content = response.choices[0].message.content
-        except Exception as e:
-            print(f'OpenAI Error: {e}')
-            ai_content = 'ERROR! There was a problem connecting to LLM. Please try again later.'
+        llm_service = OpenAIService()
+        ai_content = llm_service.get_response(context)
 
         Message.objects.create(
             conversation=conversation,
