@@ -4,15 +4,35 @@ from .llm_factory import OpenAIService
 
 
 class ConversationOrchestrator:
+    """
+    Central decision-making hub. Coordinate flows between the Django database and LLM services.
+    Manage the chain of requests to LLM services.
+    """
     def __init__(self, conversation):
         self.conversation = conversation
 
     def _classify_intent(self, message_text):
+        """
+        Download the appropriate prompt from the database, prepare a specific prompt format,
+        send a query to the LLM service to recognize the intent.
+
+        :param message_text: user message
+        :type message_text: str
+        :return: Response from the LLM service. Specifically, YES/NO for tool usage.
+        :rtype: str
+        """
         system_instruction = SystemPrompt.objects.get(name='Intentions').content
         system_prompt = [{"role": "system", "content": f'{system_instruction}: {message_text}'}]
         return OpenAIService(model_name='gpt-5-nano').get_response(system_prompt)
 
     def _get_normal_response(self):
+        """
+        A fallback method that returns the standard LLM response when tools are not required.
+        Select the LLM model, prepare the prompt, download and prepare the conversation history,
+        send a query containing the prompt and context to the LLM service.
+
+        :return: None
+        """
         if self.conversation.ai_model:
             model_name = self.conversation.ai_model.name
         else:
@@ -44,6 +64,13 @@ class ConversationOrchestrator:
         )
 
     def handle_message(self, message_text):
+        """
+        Check the message intent, select a tool or get a response.
+
+        :param message_text: user message
+        :type message_text: str
+        :return: None
+        """
         intent = self._classify_intent(message_text)
         print(f'DEBUG: Intent recognized: {intent}')
         if intent.strip().upper() == 'YES':
