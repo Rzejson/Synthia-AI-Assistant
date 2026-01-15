@@ -1,4 +1,5 @@
-from calculator import CalculatorTool
+from chat.tools.calculator import CalculatorTool
+
 
 class ToolRegistry:
     def __init__(self):

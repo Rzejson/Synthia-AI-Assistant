@@ -1,6 +1,7 @@
-from ..models import Conversation, Message, SystemPrompt
-from ..serializers import ConversationSerializer, MessageSerializer
-from .llm_factory import OpenAIService
+from chat.models import Conversation, Message, SystemPrompt
+from chat.tools.registry import ToolRegistry
+from chat.services.llm_factory import OpenAIService
+import json
 
 
 class ConversationOrchestrator:
@@ -10,6 +11,7 @@ class ConversationOrchestrator:
     """
     def __init__(self, conversation):
         self.conversation = conversation
+        self.tools_registry = ToolRegistry()
 
     def _classify_intent(self, message_text):
         """
@@ -23,16 +25,10 @@ class ConversationOrchestrator:
         """
         system_instruction = SystemPrompt.objects.get(name='Intentions').content
         system_prompt = [{"role": "system", "content": f'{system_instruction}: {message_text}'}]
-        return OpenAIService(model_name='gpt-5-nano').get_response(system_prompt)
+        response_obj = OpenAIService(model_name='gpt-5-nano').get_response(system_prompt)
+        return response_obj.content
 
-    def _get_normal_response(self):
-        """
-        A fallback method that returns the standard LLM response when tools are not required.
-        Select the LLM model, prepare the prompt, download and prepare the conversation history,
-        send a query containing the prompt and context to the LLM service.
-
-        :return: None
-        """
+    def _prepare_context(self):
         if self.conversation.ai_model:
             model_name = self.conversation.ai_model.name
         else:
@@ -52,16 +48,59 @@ class ConversationOrchestrator:
         history_from_db = [{"role": msg.role, "content": msg.content} for msg in reversed_messages]
         context = system_prompt + history_from_db
 
+        return context, model_name, prompt_name_log
+
+    def _get_normal_response(self):
+        """
+        A fallback method that returns the standard LLM response when tools are not required.
+        Select the LLM model, prepare the prompt, download and prepare the conversation history,
+        send a query containing the prompt and context to the LLM service.
+
+        :return: None
+        """
+        context, model_name, prompt_name_log = self._prepare_context()
+
         llm_service = OpenAIService(model_name=model_name)
-        ai_content = llm_service.get_response(context)
+        response_msg = llm_service.get_response(context)
 
         Message.objects.create(
             conversation=self.conversation,
             role='assistant',
-            content=ai_content,
+            content=response_msg.content,
             ai_model_used=model_name,
             prompt_used_name=prompt_name_log
         )
+
+    def _handle_tool_usage(self):
+        context, model_name, prompt_name_log = self._prepare_context()
+
+        tools_defs = self.tools_registry.get_tools_definitions()
+
+        llm_service = OpenAIService(model_name=model_name)
+        response_msg = llm_service.get_response(context, tools=tools_defs)
+
+        if response_msg.tool_calls:
+            tool_call = response_msg.tool_calls[0]
+            func_name = tool_call.function.name
+            func_args = json.loads(tool_call.function.arguments)
+            tool = self.tools_registry.get_tool(func_name)
+            result = tool.execute(**func_args)
+
+            Message.objects.create(
+                conversation=self.conversation,
+                role='assistant',
+                content=result,
+                ai_model_used=model_name,
+                prompt_used_name=prompt_name_log
+            )
+        else:
+            Message.objects.create(
+                conversation=self.conversation,
+                role='assistant',
+                content=response_msg.content,
+                ai_model_used=model_name,
+                prompt_used_name=prompt_name_log
+            )
 
     def handle_message(self, message_text):
         """
@@ -74,8 +113,7 @@ class ConversationOrchestrator:
         intent = self._classify_intent(message_text)
         print(f'DEBUG: Intent recognized: {intent}')
         if intent.strip().upper() == 'YES':
-            print("DEBUG: Trying to use a tool (not yet supported)")
-            self._get_normal_response()
+            print(f"DEBUG: Executing tool flow for intent: {intent}")
+            self._handle_tool_usage()
         else:
             self._get_normal_response()
-

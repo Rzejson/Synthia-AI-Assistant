@@ -1,4 +1,4 @@
-from base import BaseTool
+from chat.tools.base import BaseTool
 
 
 class CalculatorTool(BaseTool):

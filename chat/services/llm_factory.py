@@ -10,10 +10,12 @@ class BaseLLMService(ABC):
     the required methods.
     """
     @abstractmethod
-    def get_response(self, context):
+    def get_response(self, context, tools=None):
         """
-        Sends the context to the LLM and returns the text response.
+        Send context and tool to LLM and return text response.
+
         :param context: List of message dictionaries (role/content) or specific prompt data.
+        :param tools: Tool to use, default is None
         :return: String containing the AI's response.
         """
         pass
@@ -28,13 +30,14 @@ class OpenAIService(BaseLLMService):
         self.client = openai.OpenAI(api_key=self.api_key)
         self.model = model_name
 
-    def get_response(self, context):
+    def get_response(self, context, tools=None):
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=context
+                messages=context,
+                tools=tools
             )
-            return response.choices[0].message.content
+            return response.choices[0].message
         except Exception as e:
             print(f'OpenAI Error: {e}')
             return 'Error! There was a problem connecting to LLM. Please try again later.'
