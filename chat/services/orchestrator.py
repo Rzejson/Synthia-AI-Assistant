@@ -82,14 +82,26 @@ class ConversationOrchestrator:
         if response_msg.tool_calls:
             tool_call = response_msg.tool_calls[0]
             func_name = tool_call.function.name
-            func_args = json.loads(tool_call.function.arguments)
+            try:
+                func_args = json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError:
+                func_args = {}
             tool = self.tools_registry.get_tool(func_name)
-            result = tool.execute(**func_args)
+            if tool:
+                result = tool.execute(**func_args)
+            else:
+                result = f"Error: Tool {func_name} not found."
+            tool_info_prompt = {
+                "role": "system",
+                "content": f"Tool {func_name} executed successfully. Result: {result}."
+            }
+            context.append(tool_info_prompt)
+            final_response = llm_service.get_response(context)
 
             Message.objects.create(
                 conversation=self.conversation,
                 role='assistant',
-                content=result,
+                content=final_response.content,
                 ai_model_used=model_name,
                 prompt_used_name=prompt_name_log
             )
