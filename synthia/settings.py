@@ -129,3 +129,5 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 OPENAI_API_KEY = env('OPENAI_API_KEY')
+
+TODOIST_API_KEY = env('TODOIST_API_KEY')

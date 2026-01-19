@@ -1,10 +1,16 @@
 from chat.tools.calculator import CalculatorTool
+from chat.tools.todoist import CreateTask
 
 
 class ToolRegistry:
     def __init__(self):
         calc = CalculatorTool()
-        self.tools = {calc.name: calc}
+        add_todo = CreateTask()
+
+        self.tools = {
+            calc.name: calc,
+            add_todo.name: add_todo
+        }
 
     def get_tool(self, name: str):
         return self.tools.get(name)
