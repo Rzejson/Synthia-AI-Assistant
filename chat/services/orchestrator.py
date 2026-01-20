@@ -79,6 +79,8 @@ class ConversationOrchestrator:
         llm_service = OpenAIService(model_name=model_name)
         response_msg = llm_service.get_response(context, tools=tools_defs)
 
+        print(f'DEBUG Selected tool: {response_msg.tool_calls}')
+
         if response_msg.tool_calls:
             tool_call = response_msg.tool_calls[0]
             func_name = tool_call.function.name
@@ -93,7 +95,8 @@ class ConversationOrchestrator:
                 result = f"Error: Tool {func_name} not found."
             tool_info_prompt = {
                 "role": "system",
-                "content": f"Tool {func_name} executed successfully. Result: {result}."
+                "content": f"Tool {func_name} executed. Result: {result}. "
+                           f"Note: If the result indicates an error, inform the user about it truthfully."
             }
             context.append(tool_info_prompt)
             final_response = llm_service.get_response(context)

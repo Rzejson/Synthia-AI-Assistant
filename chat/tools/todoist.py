@@ -1,6 +1,8 @@
 import requests
+import re
 from django.conf import settings
 from chat.tools.base import BaseTool
+from chat.services.llm_factory import OpenAIService
 
 
 class CreateTask(BaseTool):
@@ -33,7 +35,8 @@ class CreateTask(BaseTool):
                 },
                 'due_string': {
                     'type': 'string',
-                    'description': 'Human-readable representation of the due date or in YYYY-MM-DD format'
+                    'description': 'Natural language date/time (e.g., "today", "tomorrow", "next Monday at 10am") '
+                                   'or date string. Extract strictly from user prompt.'
                 }
 
             },
@@ -81,7 +84,7 @@ class GetTasks(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Get all active tasks from a to-do list."
+        return "Retrieve active tasks. [READ-ONLY] This tool DOES NOT remove or modify any tasks."
 
     @property
     def parameters(self) -> dict:
@@ -123,3 +126,100 @@ class GetTasks(BaseTool):
             )
         else:
             return f"Error {r.status_code}: {r.text}"
+
+
+class CloseTask(BaseTool):
+    @property
+    def name(self) -> str:
+        return "CloseTask"
+
+    @property
+    def description(self) -> str:
+        return "[ACTION] Permanently removes/closes a task from the list. " \
+               "Use this whenever user wants to delete/finish something."
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            'type': 'object',
+            'properties': {
+                'task_name': {
+                    'type': 'string',
+                    'description':
+                        "The content/name of the task to close (e.g. 'Buy milk'). Required."
+                },
+            },
+            'required': ['task_name']
+        }
+
+    def execute(self, **kwargs) -> str:
+        task_name = kwargs.get('task_name')
+        if not task_name:
+            return "Error: Argument 'task_name' is missing. Please provide the name of the task you want to close."
+
+        print(f"DEBUG TOOL INPUT: {kwargs}")
+
+        try:
+            r = requests.get(
+                'https://api.todoist.com/rest/v2/tasks',
+                headers={
+                    'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
+                }
+            )
+            if r.status_code != 200:
+                return f"Error {r.status_code}: {r.text}"
+            tasks_dict = r.json()
+        except Exception as e:
+            return f"System Error: {str(e)}"
+
+        tasks = "\n".join(
+            [f"ID:{task['id']}, {task['content']}" for task in tasks_dict]
+        )
+
+        print(f'DEBUG TASKS: {tasks}')
+
+        system_prompt = "You are a STRICT task matcher. I will provide a list of tasks and a user query. " \
+                        "Your job is to identify the task ID that matches the user's description SEMANTICALLY. " \
+                        "\n\n" \
+                        "CRITICAL RULES:\n" \
+                        "1. If the user query describes a specific object (e.g., 'Devolay') and the list contains " \
+                        "unrelated items (e.g., 'Pond', 'Car'), YOU MUST RETURN 'NONE'.\n" \
+                        "2. DO NOT GUESS. Do not force a match if the similarity is low.\n" \
+                        "3. Only return the digits of the ID. If no task matches significantly, return 'NONE'."
+        context = [{
+            "role": "system",
+            "content": f"{system_prompt}\n\n"
+                       f"User Query: '{task_name}'\n\n"
+                       f"Tasks List:\n{tasks}"
+        }]
+
+        llm_service = OpenAIService(model_name='gpt-3.5-turbo')
+        raw_task_id = llm_service.get_response(context).content.strip()
+
+        print(f'DEBUG AI FOUND ID: {raw_task_id}')
+
+        match = re.search(r'\d+', raw_task_id)
+        if match:
+            task_id = match.group()
+        else:
+            return f"I couldn't find a task matching '{task_name}' on your list (AI returned: {raw_task_id})."
+
+        real_task_content = "Unknown task"
+        for t in tasks_dict:
+            if str(t['id']) == str(task_id):
+                real_task_content = t['content']
+                break
+
+        try:
+            r = requests.post(
+                f'https://api.todoist.com/rest/v2/tasks/{task_id}/close',
+                headers={
+                    'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
+                }
+            )
+            if r.status_code == 204:
+                return f"Successfully closed task '{real_task_content}' (ID: {task_id})."
+            else:
+                return f"Error closing task {task_id}: {r.status_code} - {r.text}"
+        except Exception as e:
+            return f"System Error: {str(e)}"
