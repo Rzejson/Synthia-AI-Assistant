@@ -72,3 +72,54 @@ class CreateTask(BaseTool):
                 return f"Error {r.status_code}: {r.text}"
         except Exception as e:
             return f"System Error: {str(e)}"
+
+
+class GetTasks(BaseTool):
+    @property
+    def name(self) -> str:
+        return "GetTasks"
+
+    @property
+    def description(self) -> str:
+        return "Get all active tasks from a to-do list."
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            'type': 'object',
+            'properties': {
+                'filter': {
+                    'type': 'string',
+                    'description':
+                        "Filter criteria, e.g., 'today', 'overdue', 'priority 1'. Leave empty for all active tasks."
+                },
+            },
+            'required': []
+        }
+
+    def execute(self, **kwargs) -> str:
+        filters = kwargs.get('filter')
+        payload = {'filter': filters} if filters else None
+
+        print(f"DEBUG TOOL INPUT: {kwargs}")
+
+        try:
+            r = requests.get(
+                'https://api.todoist.com/rest/v2/tasks',
+                headers={
+                    'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
+                },
+                params=payload
+            )
+        except Exception as e:
+            return f"System Error: {str(e)}"
+        if r.status_code == 200:
+            tasks = r.json()
+            return "\n".join(
+                [
+                    f"ID:{task['id']}, {task['content']}, {task['due']['date'] if task['due'] else 'No deadline.'}, "
+                    f"Priority:{task['priority']}" for task in tasks
+                ]
+            )
+        else:
+            return f"Error {r.status_code}: {r.text}"
