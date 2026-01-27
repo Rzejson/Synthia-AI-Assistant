@@ -71,6 +71,8 @@ class ConversationOrchestrator:
             prompt_used_name=prompt_name_log
         )
 
+        return response_msg.content
+
     def _handle_tool_usage(self):
         context, model_name, prompt_name_log = self._prepare_context()
 
@@ -108,6 +110,7 @@ class ConversationOrchestrator:
                 ai_model_used=model_name,
                 prompt_used_name=prompt_name_log
             )
+            return final_response.content
         else:
             Message.objects.create(
                 conversation=self.conversation,
@@ -116,6 +119,7 @@ class ConversationOrchestrator:
                 ai_model_used=model_name,
                 prompt_used_name=prompt_name_log
             )
+            return response_msg.content
 
     def handle_message(self, message_text):
         """
@@ -129,6 +133,6 @@ class ConversationOrchestrator:
         print(f'DEBUG: Intent recognized: {intent}')
         if intent.strip().upper() == 'YES':
             print(f"DEBUG: Executing tool flow for intent: {intent}")
-            self._handle_tool_usage()
+            return self._handle_tool_usage()
         else:
-            self._get_normal_response()
+            return self._get_normal_response()
