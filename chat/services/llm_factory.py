@@ -41,3 +41,17 @@ class OpenAIService(BaseLLMService):
         except Exception as e:
             print(f'OpenAI Error: {e}')
             return 'Error! There was a problem connecting to LLM. Please try again later.'
+
+    def transcribe_audio(self, audio_file):
+        """
+        Transcribes audio file using OpenAI Whisper model.
+
+        :param audio_file: file-like object (binary) containing the audio
+        :return: Transcribed text (str)
+        """
+        transcript = self.client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            response_format="text"
+        )
+        return transcript
