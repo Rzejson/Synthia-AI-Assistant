@@ -4,7 +4,8 @@ from django.utils import timezone
 
 class AIProvider(models.Model):
     """
-    Represents an AI service provider.
+    Represents an AI service provider (e.g., OpenAI, Anthropic).
+    Used to group models by their source.
     """
     name = models.CharField(max_length=50, unique=True)
 
@@ -14,7 +15,8 @@ class AIProvider(models.Model):
 
 class AIModel(models.Model):
     """
-    Represents a specific AI model version available from a provider.
+    Represents a specific version of an LLM available in the system.
+    Used for configuring conversation settings.
     """
     name = models.CharField(max_length=50)
     provider = models.ForeignKey(AIProvider, on_delete=models.CASCADE)
@@ -25,19 +27,62 @@ class AIModel(models.Model):
 
 class SystemPrompt(models.Model):
     """
-    Represents a predefined system instruction (persona) for the AI.
+    Configuration model for system instructions.
+
+    Supports different categories of prompts (e.g., Main Persona, Intent Classifier).
+    Enforces a logic where only one prompt of a given type can be active globally at a time.
     """
     name = models.CharField(max_length=100)
     content = models.TextField()
 
+    class PromptType (models.TextChoices):
+        MAIN_PERSONA = 'main_persona', 'Main persona'
+        INTENT_CLASSIFIER = 'intent_classifier', 'Intent classifier'
+
+    target_type = models.CharField(
+        max_length=50,
+        choices=PromptType.choices,
+        default=PromptType.MAIN_PERSONA
+    )
+
+    is_active = models.BooleanField(default=False)
+
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        """
+        Overrides the default save method to enforce exclusivity.
+
+        If 'is_active' is set to True, this method automatically deactivates (sets is_active=False)
+        all other SystemPrompt records of the same 'target_type'.
+        """
+        if self.is_active:
+            SystemPrompt.objects.filter(target_type=self.target_type, is_active=True).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    def get_active_prompt(target_type='main_persona'):
+        """
+        Retrieves the content and name of the currently active prompt for a given type.
+
+        :param target_type: The category of the prompt to retrieve (from PromptType choices).
+        :return: A tuple (content, name). Returns a hardcoded fallback tuple if no active prompt is found.
+        :rtype: tuple[str, str]
+        """
+        active_prompt = SystemPrompt.objects.filter(target_type=target_type, is_active=True).first()
+        if active_prompt:
+            return active_prompt.content, active_prompt.name
+        else:
+            return 'You are Synthia, the helpful AI assistant.', 'Hardcoded Fallback'
 
 
 class Conversation(models.Model):
     """
-    A model representing a single conversation (thread) with an AI assistant.
-    It stores metadata (topic, start date of the conversation) and configuration (active model/prompt).
+    Represents a single conversation thread with the user.
+
+    Acts as a container for messages and holds configuration overrides.
+    If 'system_prompt' is set here, it overrides the global active SystemPrompt.
     """
     topic = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -52,8 +97,10 @@ class Conversation(models.Model):
 
 class Message(models.Model):
     """
-    A model representing a single message within a conversation.
-    It contains the message content, author, creation date and audit logs (which model generated it).
+    Represents a single message within a conversation.
+
+    Stores the content, role (user/assistant), and audit metadata (which model and prompt
+    were actually used to generate this specific response).
     """
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
     role = models.CharField(max_length=20)

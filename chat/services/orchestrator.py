@@ -7,7 +7,7 @@ import json
 class ConversationOrchestrator:
     """
     Central decision-making hub. Coordinate flows between the Django database and LLM services.
-    Manage the chain of requests to LLM services.
+    Manage the chain of requests to LLM services and tool execution.
     """
     def __init__(self, conversation):
         self.conversation = conversation
@@ -15,20 +15,30 @@ class ConversationOrchestrator:
 
     def _classify_intent(self, message_text):
         """
-        Download the appropriate prompt from the database, prepare a specific prompt format,
-        send a query to the LLM service to recognize the intent.
+        Retrieve the active intent classification prompt, construct the system message,
+        and query the LLM to determine if tools are needed.
 
-        :param message_text: user message
+        :param message_text: The user's input message.
         :type message_text: str
-        :return: Response from the LLM service. Specifically, YES/NO for tool usage.
+        :return: 'YES' if tool usage is detected, 'NO' otherwise.
         :rtype: str
         """
-        system_instruction = SystemPrompt.objects.get(name='Intentions').content
+        system_instruction = SystemPrompt.get_active_prompt('intent_classifier')[0]
         system_prompt = [{"role": "system", "content": f'{system_instruction}: {message_text}'}]
         response_obj = OpenAIService(model_name='gpt-5-nano').get_response(system_prompt)
         return response_obj.content
 
     def _prepare_context(self):
+        """
+        Prepare the full context for the LLM request.
+
+        Resolves the AI model and system prompt by checking conversation-specific overrides first,
+        then falling back to global active defaults from the database.
+        Retrieves recent conversation history from the database.
+
+        :return: A tuple containing: (list of message dicts for API, model name, prompt name for logging).
+        :rtype: tuple[list, str, str]
+        """
         if self.conversation.ai_model:
             model_name = self.conversation.ai_model.name
         else:
@@ -38,8 +48,9 @@ class ConversationOrchestrator:
             system_instruction = self.conversation.system_prompt.content
             prompt_name_log = self.conversation.system_prompt.name
         else:
-            system_instruction = "Jesteś Synthia, pomocna asystentka AI."
-            prompt_name_log = "Standard (Hardcoded)"
+            active_prompt_content, active_prompt_name = SystemPrompt.get_active_prompt('main_persona')
+            system_instruction = active_prompt_content
+            prompt_name_log = active_prompt_name
 
         messages_query = Message.objects.filter(conversation=self.conversation).order_by('-timestamp')[:10]
         reversed_messages = reversed(messages_query)
@@ -53,10 +64,12 @@ class ConversationOrchestrator:
     def _get_normal_response(self):
         """
         A fallback method that returns the standard LLM response when tools are not required.
-        Select the LLM model, prepare the prompt, download and prepare the conversation history,
-        send a query containing the prompt and context to the LLM service.
 
-        :return: None
+        Selects the LLM model, prepares the context (prompt + history), sends the query,
+        saves the assistant's response to the database, and returns the content.
+
+        :return: The content of the assistant's response.
+        :rtype: str
         """
         context, model_name, prompt_name_log = self._prepare_context()
 
@@ -74,6 +87,19 @@ class ConversationOrchestrator:
         return response_msg.content
 
     def _handle_tool_usage(self):
+        """
+        Orchestrate the tool execution flow.
+
+        1. Prepares context including tool definitions.
+        2. Gets the initial response from LLM (deciding which tool to call).
+        3. Executes the selected tool logic.
+        4. Appends the tool result to the context.
+        5. Generates the final natural language response based on the tool result.
+        6. Saves the interaction to the database.
+
+        :return: The final response content after tool execution.
+        :rtype: str
+        """
         context, model_name, prompt_name_log = self._prepare_context()
 
         tools_defs = self.tools_registry.get_tools_definitions()
@@ -123,11 +149,13 @@ class ConversationOrchestrator:
 
     def handle_message(self, message_text):
         """
-        Check the message intent, select a tool or get a response.
+        Main entry point for processing a user message.
+        Classifies the intent and delegates execution to either the tool handler or the standard response handler.
 
-        :param message_text: user message
+        :param message_text: The content of the message received from the user.
         :type message_text: str
-        :return: None
+        :return: The final text response from the assistant to be sent back to the user.
+        :rtype: str
         """
         intent = self._classify_intent(message_text)
         print(f'DEBUG: Intent recognized: {intent}')
