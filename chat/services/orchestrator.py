@@ -1,4 +1,4 @@
-from chat.models import Conversation, Message, SystemPrompt
+from chat.models import Conversation, Message, SystemPrompt, AIModel
 from chat.tools.registry import ToolRegistry
 from chat.services.llm_factory import OpenAIService
 import json
@@ -23,9 +23,10 @@ class ConversationOrchestrator:
         :return: 'YES' if tool usage is detected, 'NO' otherwise.
         :rtype: str
         """
-        system_instruction = SystemPrompt.get_active_prompt('intent_classifier')[0]
+        system_instruction = SystemPrompt.get_active_prompt(SystemPrompt.PromptType.INTENT_CLASSIFIER)[0]
+        model_name = AIModel.get_active_model_name(AIModel.TargetType.INTENT_CLASSIFIER)
         system_prompt = [{"role": "system", "content": f'{system_instruction}: {message_text}'}]
-        response_obj = OpenAIService(model_name='gpt-5-nano').get_response(system_prompt)
+        response_obj = OpenAIService(model_name=model_name).get_response(system_prompt)
         return response_obj.content
 
     def _prepare_context(self):
@@ -40,15 +41,17 @@ class ConversationOrchestrator:
         :rtype: tuple[list, str, str]
         """
         if self.conversation.ai_model:
-            model_name = self.conversation.ai_model.name
+            model_name = self.conversation.ai_model.api_name
         else:
-            model_name = 'gpt-5-nano'
+            model_name = AIModel.get_active_model_name(AIModel.TargetType.MAIN_CHAT)
 
         if self.conversation.system_prompt:
             system_instruction = self.conversation.system_prompt.content
             prompt_name_log = self.conversation.system_prompt.name
         else:
-            active_prompt_content, active_prompt_name = SystemPrompt.get_active_prompt('main_persona')
+            active_prompt_content, active_prompt_name = SystemPrompt.get_active_prompt(
+                SystemPrompt.PromptType.MAIN_PERSONA
+            )
             system_instruction = active_prompt_content
             prompt_name_log = active_prompt_name
 

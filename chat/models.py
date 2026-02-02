@@ -19,10 +19,43 @@ class AIModel(models.Model):
     Used for configuring conversation settings.
     """
     name = models.CharField(max_length=50)
+    api_name = models.CharField(max_length=50)
     provider = models.ForeignKey(AIProvider, on_delete=models.CASCADE)
+
+    class TargetType(models.TextChoices):
+        MAIN_CHAT = 'main_chat', 'Main chat'
+        INTENT_CLASSIFIER = 'intent_classifier', 'Intent classifier'
+        TOOL_TODOIST = 'tool_todoist', 'Todoist'
+
+    target_type = models.CharField(
+        max_length=50,
+        choices=TargetType.choices,
+        default=TargetType.MAIN_CHAT
+    )
+
+    is_active = models.BooleanField(default=False)
 
     def __str__(self):
         return f'{self.name} ({self.provider})'
+
+    def save(self, *args, **kwargs):
+        """
+        Overrides the default save method to enforce exclusivity.
+
+        If 'is_active' is set to True, this method automatically deactivates (sets is_active=False)
+        all other AIModel records of the same 'target_type'.
+        """
+        if self.is_active:
+            AIModel.objects.filter(target_type=self.target_type, is_active=True).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    def get_active_model_name(target_type):
+        active_model = AIModel.objects.filter(target_type=target_type, is_active=True).first()
+        if active_model:
+            return active_model.api_name
+        else:
+            return 'gpt-3.5-turbo'
 
 
 class SystemPrompt(models.Model):

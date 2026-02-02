@@ -2,7 +2,7 @@ import requests
 import re
 from django.conf import settings
 from chat.tools.base import BaseTool
-from chat.models import SystemPrompt
+from chat.models import SystemPrompt, AIModel
 from chat.services.llm_factory import OpenAIService
 
 
@@ -179,7 +179,7 @@ class CloseTask(BaseTool):
 
         print(f'DEBUG TASKS: {tasks}')
 
-        system_prompt = SystemPrompt.get_active_prompt('tool_todoist')[0]
+        system_prompt = SystemPrompt.get_active_prompt(SystemPrompt.PromptType.TOOL_TODOIST)[0]
         context = [{
             "role": "system",
             "content": f"{system_prompt}\n\n"
@@ -187,7 +187,8 @@ class CloseTask(BaseTool):
                        f"Tasks List:\n{tasks}"
         }]
 
-        llm_service = OpenAIService(model_name='gpt-3.5-turbo')
+        model_name = AIModel.get_active_model_name(AIModel.TargetType.TOOL_TODOIST)
+        llm_service = OpenAIService(model_name=model_name)
         raw_task_id = llm_service.get_response(context).content.strip()
 
         print(f'DEBUG AI FOUND ID: {raw_task_id}')
