@@ -2,6 +2,7 @@ import requests
 import re
 from django.conf import settings
 from chat.tools.base import BaseTool
+from chat.models import SystemPrompt
 from chat.services.llm_factory import OpenAIService
 
 
@@ -178,14 +179,7 @@ class CloseTask(BaseTool):
 
         print(f'DEBUG TASKS: {tasks}')
 
-        system_prompt = "You are a STRICT task matcher. I will provide a list of tasks and a user query. " \
-                        "Your job is to identify the task ID that matches the user's description SEMANTICALLY. " \
-                        "\n\n" \
-                        "CRITICAL RULES:\n" \
-                        "1. If the user query describes a specific object (e.g., 'Devolay') and the list contains " \
-                        "unrelated items (e.g., 'Pond', 'Car'), YOU MUST RETURN 'NONE'.\n" \
-                        "2. DO NOT GUESS. Do not force a match if the similarity is low.\n" \
-                        "3. Only return the digits of the ID. If no task matches significantly, return 'NONE'."
+        system_prompt = SystemPrompt.get_active_prompt('tool_todoist')[0]
         context = [{
             "role": "system",
             "content": f"{system_prompt}\n\n"

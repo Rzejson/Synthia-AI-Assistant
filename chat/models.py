@@ -38,6 +38,7 @@ class SystemPrompt(models.Model):
     class PromptType (models.TextChoices):
         MAIN_PERSONA = 'main_persona', 'Main persona'
         INTENT_CLASSIFIER = 'intent_classifier', 'Intent classifier'
+        TOOL_TODOIST = 'tool_todoist', 'Todoist'
 
     target_type = models.CharField(
         max_length=50,
