@@ -39,7 +39,10 @@ class ConversationOrchestrator:
         messages_query = Message.objects.filter(conversation=self.conversation).order_by('-timestamp')[:10]
         reversed_messages = reversed(messages_query)
 
-        history_from_db = [{"role": msg.role, "content": msg.content} for msg in reversed_messages]
+        history_from_db = [{
+            "role": msg.role,
+            "content": f"[{timezone.localtime(msg.timestamp).strftime('%Y-%m-%d %H:%M')}] {msg.content}"
+        } for msg in reversed_messages]
 
         return system_instruction, history_from_db, prompt_name_log
 
