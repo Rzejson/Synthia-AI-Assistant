@@ -2,6 +2,7 @@ from django.utils import timezone
 from chat.models import Message, SystemPrompt, AIModel
 from chat.tools.registry import ToolRegistry
 from chat.services.llm_factory import OpenAIService
+from chat.rag import search_memory
 import json
 
 
@@ -51,7 +52,11 @@ class ConversationOrchestrator:
         system_instruction, history, prompt_name_log = self._prepare_context()
         current_time = timezone.localtime()
 
+        found_memories = search_memory(message_text)
+        memory_context = '\n'.join([m.content for m in found_memories])
+
         full_system_content = f"{system_instruction}\n\n" \
+                              f"Related Threads from Knowledge Base:\n{memory_context}\n\n" \
                               f"Current Date and Time: {current_time.strftime('%Y-%m-%d %H:%M')}"
 
         system_prompt = [{"role": "system", "content": full_system_content}]

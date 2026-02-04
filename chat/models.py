@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from pgvector.django import VectorField
 
 
 class AIProvider(models.Model):
@@ -148,3 +149,12 @@ class Message(models.Model):
         """Clear presentation of the message (date, author, content)."""
         local_timestamp = timezone.localtime(self.timestamp)
         return f"{local_timestamp.strftime('%Y-%m-%d %H:%M')} {self.role}: {self.content[:50]}..."
+
+
+class Memory(models.Model):
+    content = models.TextField()
+    embedding = VectorField(dimensions=1536)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.content[:50]
