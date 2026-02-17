@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django.core.validators import MaxValueValidator, MinValueValidator
 from pgvector.django import VectorField
 
 
@@ -158,3 +159,63 @@ class Memory(models.Model):
 
     def __str__(self):
         return self.content[:50]
+
+
+class PromptCategory(models.Model):
+    name = models.CharField(max_length=50)
+    key = models.CharField(max_length=20, unique=True)
+    description = models.TextField()
+
+    def __str__(self):
+        return f'{self.name} ({self.key})'
+
+
+class IdentityModule(models.Model):
+    name = models.CharField(max_length=50)
+    content = models.TextField()
+    category = models.ForeignKey(PromptCategory, on_delete=models.PROTECT)
+    is_active = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f'{self.name} ({self.category.name})'
+
+
+class PersonalityTrait(models.Model):
+    name = models.CharField(max_length=50)
+    description = models.TextField()
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+
+class AgentModeTrait(models.Model):
+    agent_mode = models.ForeignKey('AgentMode', on_delete=models.CASCADE)
+    trait = models.ForeignKey(PersonalityTrait, on_delete=models.CASCADE)
+    value = models.IntegerField(default=5, validators=[MinValueValidator(0), MaxValueValidator(10)])
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['agent_mode', 'trait'],
+                name='unique_agent_mode_trait',
+                violation_error_message='This personality trait is already in this mode.'
+            )
+        ]
+
+
+class AgentMode(models.Model):
+    name = models.CharField(max_length=50)
+    key = models.CharField(max_length=20, unique=True)
+    identity_modules = models.ManyToManyField(IdentityModule, blank=True)
+    personality_traits = models.ManyToManyField(PersonalityTrait, through='AgentModeTrait', blank=True)
+    ai_model = models.ForeignKey(AIModel, on_delete=models.SET_NULL, null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f'{self.name} ({self.key})'
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            AgentMode.objects.filter(is_default=True).update(is_default=False)
+        super().save(*args, **kwargs)
