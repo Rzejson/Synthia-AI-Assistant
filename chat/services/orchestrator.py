@@ -48,10 +48,6 @@ class ConversationOrchestrator:
     def handle_message(self, message_text):
         model_name = AIModel.get_active_model_name(AIModel.TargetType.MAIN_CHAT)
         system_instruction, history, prompt_name_log = self._prepare_context()
-        print("\n" + "=" * 60)
-        print("🧠 FINAL ASSEMBLED SYSTEM PROMPT:")
-        print(system_instruction)
-        print("=" * 60 + "\n")
         current_time = timezone.localtime()
 
         found_memories = search_memory(message_text)
@@ -67,9 +63,6 @@ class ConversationOrchestrator:
         context = system_prompt + history + user_message
         tools_defs = self.tools_registry.get_tools_definitions()
 
-        print(f"DEBUG: Starting Agent Loop with model: {model_name}")
-        print(f"DEBUG: Tools available: {[t['function']['name'] for t in tools_defs]}")
-
         llm_service = OpenAIService(model_name=model_name)
         for i in range(5):
             response = llm_service.get_response(
@@ -79,7 +72,6 @@ class ConversationOrchestrator:
             context.append(response)
 
             if response.tool_calls:
-                print(f"DEBUG: Attempt to use a tool detected\n\nDEBUG: {response.tool_calls}")
                 tool_call = response.tool_calls[0]
                 func_name = tool_call.function.name
                 try:
