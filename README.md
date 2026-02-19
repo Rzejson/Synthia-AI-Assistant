@@ -6,6 +6,7 @@ Synthia is an intelligent agent built with **Django** and **OpenAI**. Unlike sim
 
 * **🧠 Long-Term Memory (RAG):** Uses `pgvector` and OpenAI Embeddings. The system allows the administrator to "teach" the AI new facts, which are stored in a vector database and retrieved during conversations.
 * **🛠️ Agentic Capabilities:** Equipped with a **Tool Registry**. The AI decides when to use tools (e.g., adding a task to Todoist) based on the conversation context.
+* **🎭 Dynamic Persona Architecture:** A fully configurable personality system managed via the Django Admin panel. Build unique "Agent Modes" by combining modular identity blocks (`IdentityModules`) and adjusting specific behavioral sliders (`PersonalityTraits` like Humor or Empathy on a 0-10 scale).
 * **💬 Telegram Interface:** Fully asynchronous integration via Telegram Bot API.
 * **🐳 Dockerized:** Production-ready setup with Django, PostgreSQL, and Redis in containers.
 
@@ -57,6 +58,11 @@ Synthia is an intelligent agent built with **Django** and **OpenAI**. Unlike sim
     docker compose exec web python manage.py learn "The author of this project lives in Gdynia."
     ```
     *The bot will now answer correctly when asked "Where does the author live?"*
+* **Persona Configuration (Admin Panel):**
+    To change how Synthia behaves, log in to the Django Admin panel (`/admin/`).
+    1. Define text blocks in **Identity Modules**.
+    2. Define sliders in **Personality Traits** (e.g., Sarcasm, Formality).
+    3. Create an **Agent Mode**, assign modules, set trait values (0-10), and check the `Is default` flag to activate it instantly.
 
 ---
 *Created by Andrzej Jacyno.*

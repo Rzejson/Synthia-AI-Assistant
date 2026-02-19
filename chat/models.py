@@ -162,6 +162,10 @@ class Memory(models.Model):
 
 
 class PromptCategory(models.Model):
+    """
+    Represents a logical grouping for identity modules (e.g., Core Persona, Rules, Tools).
+    Helps organize and filter prompt blocks in the admin panel.
+    """
     name = models.CharField(max_length=50)
     key = models.CharField(max_length=20, unique=True)
     description = models.TextField()
@@ -171,6 +175,10 @@ class PromptCategory(models.Model):
 
 
 class IdentityModule(models.Model):
+    """
+    A modular block of text forming the core instructions or identity of the AI.
+    Can be toggled on/off and reused across multiple Agent Modes.
+    """
     name = models.CharField(max_length=50)
     content = models.TextField()
     category = models.ForeignKey(PromptCategory, on_delete=models.PROTECT)
@@ -181,6 +189,9 @@ class IdentityModule(models.Model):
 
 
 class PersonalityTrait(models.Model):
+    """
+    Defines a specific behavioral attribute or characteristic (e.g., Humor, Empathy).
+    """
     name = models.CharField(max_length=50)
     description = models.TextField()
     is_active = models.BooleanField(default=True)
@@ -190,6 +201,10 @@ class PersonalityTrait(models.Model):
 
 
 class AgentModeTrait(models.Model):
+    """
+    Intermediate 'through' model connecting an AgentMode with a PersonalityTrait.
+    Stores the specific intensity value (0-10) for a trait in a given mode.
+    """
     agent_mode = models.ForeignKey('AgentMode', on_delete=models.CASCADE)
     trait = models.ForeignKey(PersonalityTrait, on_delete=models.CASCADE)
     value = models.IntegerField(default=5, validators=[MinValueValidator(0), MaxValueValidator(10)])
@@ -205,6 +220,10 @@ class AgentModeTrait(models.Model):
 
 
 class AgentMode(models.Model):
+    """
+    Represents a distinct persona or configuration mode for the AI assistant.
+    Acts as a central container that combines identity modules and personality traits.
+    """
     name = models.CharField(max_length=50)
     key = models.CharField(max_length=20, unique=True)
     identity_modules = models.ManyToManyField(IdentityModule, blank=True)
@@ -219,3 +238,23 @@ class AgentMode(models.Model):
         if self.is_default:
             AgentMode.objects.filter(is_default=True).update(is_default=False)
         super().save(*args, **kwargs)
+
+    @staticmethod
+    def get_default_mode():
+        """
+        Retrieves the default AgentMode from the database.
+        Returns None if no default mode is set.
+        """
+        return AgentMode.objects.filter(is_default=True).first()
+
+    def build_system_prompt(self):
+        """
+        Assembles the final system instructions for the LLM.
+        Concatenates active identity modules and personality traits
+        associated with this AgentMode.
+        """
+        identity_modules = self.identity_modules.filter(is_active=True)
+        core_identity = ' '.join(module.content for module in identity_modules)
+        traits = AgentModeTrait.objects.filter(agent_mode=self, trait__is_active=True)
+        persona_traits = '\n'.join(f'- {trait.trait.name}: {trait.value}/10' for trait in traits)
+        return f'{core_identity}\n\n Personality Traits:\n{persona_traits}'

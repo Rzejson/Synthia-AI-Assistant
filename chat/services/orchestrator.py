@@ -1,5 +1,5 @@
 from django.utils import timezone
-from chat.models import Message, SystemPrompt, AIModel
+from chat.models import Message, SystemPrompt, AIModel, AgentMode, AgentModeTrait
 from chat.tools.registry import ToolRegistry
 from chat.services.llm_factory import OpenAIService
 from chat.rag import search_memory
@@ -19,23 +19,21 @@ class ConversationOrchestrator:
         """
         Prepare the full context for the LLM request.
 
-        Resolves the AI model and system prompt by checking conversation-specific overrides first,
-        then falling back to global active defaults from the database.
-        Retrieves recent conversation history from the database.
+        Dynamically builds the system instructions by retrieving the default AgentMode
+        (including active identity modules and personality traits). Falls back to a
+        hardcoded prompt if no default mode is set. Retrieves recent conversation history.
 
-        :return: A tuple containing: (list of message dicts for API, model name, prompt name for logging).
-        :rtype: tuple[list, str, str]
+        :return: A tuple containing: (system instruction string, list of history message dicts, prompt/mode name for logging).
+        :rtype: tuple[str, list, str]
         """
 
-        if self.conversation.system_prompt:
-            system_instruction = self.conversation.system_prompt.content
-            prompt_name_log = self.conversation.system_prompt.name
+        agent_mode = AgentMode.get_default_mode()
+        if agent_mode:
+            system_instruction = agent_mode.build_system_prompt()
+            prompt_name_log = agent_mode.name
         else:
-            active_prompt_content, active_prompt_name = SystemPrompt.get_active_prompt(
-                SystemPrompt.PromptType.MAIN_PERSONA
-            )
-            system_instruction = active_prompt_content
-            prompt_name_log = active_prompt_name
+            system_instruction = 'You are Synthia, a helpful AI assistant.'
+            prompt_name_log = 'Hardcoded Fallback'
 
         messages_query = Message.objects.filter(conversation=self.conversation).order_by('-timestamp')[:10]
         reversed_messages = reversed(messages_query)
@@ -50,6 +48,10 @@ class ConversationOrchestrator:
     def handle_message(self, message_text):
         model_name = AIModel.get_active_model_name(AIModel.TargetType.MAIN_CHAT)
         system_instruction, history, prompt_name_log = self._prepare_context()
+        print("\n" + "=" * 60)
+        print("🧠 FINAL ASSEMBLED SYSTEM PROMPT:")
+        print(system_instruction)
+        print("=" * 60 + "\n")
         current_time = timezone.localtime()
 
         found_memories = search_memory(message_text)
