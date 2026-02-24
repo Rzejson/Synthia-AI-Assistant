@@ -1,5 +1,5 @@
 from django.utils import timezone
-from chat.models import Message, SystemPrompt, AIModel, AgentMode, AgentModeTrait
+from chat.models import Message, AIModel, AgentMode
 from chat.tools.registry import ToolRegistry
 from chat.services.llm_factory import OpenAIService
 from chat.rag import search_memory
@@ -64,7 +64,10 @@ class ConversationOrchestrator:
         tools_defs = self.tools_registry.get_tools_definitions()
 
         llm_service = OpenAIService(model_name=model_name)
-        for i in range(5):
+
+        max_iterations = 5
+        for i in range(max_iterations):
+            print(f'DEBUG: Loop rotation {i}')
             response = llm_service.get_response(
                 context=context,
                 tools=tools_defs
@@ -72,23 +75,27 @@ class ConversationOrchestrator:
             context.append(response)
 
             if response.tool_calls:
-                tool_call = response.tool_calls[0]
-                func_name = tool_call.function.name
-                try:
-                    func_args = json.loads(tool_call.function.arguments)
-                except json.JSONDecodeError:
-                    func_args = {}
-                tool = self.tools_registry.get_tool(func_name)
-                if tool:
-                    result = tool.execute(**func_args)
-                else:
-                    result = f"Error: Tool {func_name} not found."
-                tool_message = {
-                    'role': 'tool',
-                    'tool_call_id': tool_call.id,
-                    'content': str(result)
-                }
-                context.append(tool_message)
+                print(f'DEBUG: Parallel Tools Check {len(response.tool_calls)}')
+                for tool_call in response.tool_calls:
+                    func_name = tool_call.function.name
+                    print(f'DEBUG: TOOLS: {func_name}')
+                    try:
+                        func_args = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        func_args = {}
+                    print(f'DEBUG: TOOLS ARGS: {func_args}')
+                    tool = self.tools_registry.get_tool(func_name)
+                    if tool:
+                        result = tool.execute(**func_args)
+                        print(f'DEBUG: Tool result: {result}')
+                    else:
+                        result = f"Error: Tool {func_name} not found."
+                    tool_message = {
+                        'role': 'tool',
+                        'tool_call_id': tool_call.id,
+                        'content': str(result)
+                    }
+                    context.append(tool_message)
             else:
                 Message.objects.create(
                     conversation=self.conversation,
@@ -98,3 +105,5 @@ class ConversationOrchestrator:
                     prompt_used_name=prompt_name_log
                 )
                 return response.content
+
+        return 'System: Maximum tool iteration limit reached. Process aborted.'
