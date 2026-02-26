@@ -229,6 +229,9 @@ class AgentMode(models.Model):
     identity_modules = models.ManyToManyField(IdentityModule, blank=True)
     personality_traits = models.ManyToManyField(PersonalityTrait, through='AgentModeTrait', blank=True)
     ai_model = models.ForeignKey(AIModel, on_delete=models.SET_NULL, null=True, blank=True)
+    max_tool_iteration_limit = models.IntegerField(default=5)
+    context_message_limit = models.IntegerField(default=10)
+    rag_results_limit = models.IntegerField(default=3)
     is_default = models.BooleanField(default=False)
 
     def __str__(self):

@@ -23,19 +23,26 @@ class ConversationOrchestrator:
         (including active identity modules and personality traits). Falls back to a
         hardcoded prompt if no default mode is set. Retrieves recent conversation history.
 
-        :return: A tuple containing: (system instruction string, list of history message dicts, prompt/mode name for logging).
-        :rtype: tuple[str, list, str]
+        :return: A tuple containing: (system instruction string, list of history message dicts,
+        prompt/mode name for logging, context message limit, RAG results limit).
+        :rtype: tuple[str, list, str, int, int]
         """
 
         agent_mode = AgentMode.get_default_mode()
         if agent_mode:
             system_instruction = agent_mode.build_system_prompt()
             prompt_name_log = agent_mode.name
+            tool_limit = agent_mode.max_tool_iteration_limit
+            context_limit = agent_mode.context_message_limit
+            rag_limit = agent_mode.rag_results_limit
         else:
             system_instruction = 'You are Synthia, a helpful AI assistant.'
             prompt_name_log = 'Hardcoded Fallback'
+            tool_limit = 5
+            context_limit = 10
+            rag_limit = 3
 
-        messages_query = Message.objects.filter(conversation=self.conversation).order_by('-timestamp')[:10]
+        messages_query = Message.objects.filter(conversation=self.conversation).order_by('-timestamp')[:context_limit]
         reversed_messages = reversed(messages_query)
 
         history_from_db = [{
@@ -43,14 +50,14 @@ class ConversationOrchestrator:
             "content": f"[{timezone.localtime(msg.timestamp).strftime('%Y-%m-%d %H:%M')}] {msg.content}"
         } for msg in reversed_messages]
 
-        return system_instruction, history_from_db, prompt_name_log
+        return system_instruction, history_from_db, prompt_name_log, tool_limit, rag_limit
 
     def handle_message(self, message_text):
         model_name = AIModel.get_active_model_name(AIModel.TargetType.MAIN_CHAT)
-        system_instruction, history, prompt_name_log = self._prepare_context()
+        system_instruction, history, prompt_name_log, tool_limit, rag_limit = self._prepare_context()
         current_time = timezone.localtime()
 
-        found_memories = search_memory(message_text)
+        found_memories = search_memory(message_text, limit=rag_limit)
         memory_context = '\n'.join([m.content for m in found_memories])
 
         full_system_content = f"{system_instruction}\n\n" \
@@ -65,8 +72,7 @@ class ConversationOrchestrator:
 
         llm_service = OpenAIService(model_name=model_name)
 
-        max_iterations = 5
-        for i in range(max_iterations):
+        for i in range(tool_limit):
             print(f'DEBUG: Loop rotation {i}')
             response = llm_service.get_response(
                 context=context,

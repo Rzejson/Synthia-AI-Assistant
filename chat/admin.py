@@ -38,6 +38,14 @@ class AgentModeTraitInline(admin.TabularInline):
 
 @admin.register(AgentMode)
 class AgentModeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'key', 'is_default', 'ai_model')
+    list_display = (
+        'name',
+        'key',
+        'is_default',
+        'ai_model',
+        'max_tool_iteration_limit',
+        'context_message_limit',
+        'rag_results_limit'
+    )
     inlines = [AgentModeTraitInline]
     filter_horizontal = ('identity_modules',)
