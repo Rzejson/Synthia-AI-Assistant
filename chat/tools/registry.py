@@ -1,5 +1,5 @@
 from chat.tools.calculator import CalculatorTool
-from chat.tools.todoist import CreateTask, GetTasks, CloseTask
+from chat.tools.todoist import CreateTask, GetTasks, CloseTask, UpdateTask
 
 
 class ToolRegistry:
@@ -8,12 +8,14 @@ class ToolRegistry:
         add_todo = CreateTask()
         close_task = CloseTask()
         get_tasks_todo = GetTasks()
+        update_todo = UpdateTask()
 
         self.tools = {
             calc.name: calc,
             add_todo.name: add_todo,
             close_task.name: close_task,
-            get_tasks_todo.name: get_tasks_todo
+            get_tasks_todo.name: get_tasks_todo,
+            update_todo.name: update_todo
         }
 
     def get_tool(self, name: str):

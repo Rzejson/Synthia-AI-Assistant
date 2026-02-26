@@ -187,3 +187,67 @@ class CloseTask(BaseTool):
                 return f"Error closing task {task_id}: {r.status_code} - {r.text}"
         except Exception as e:
             return f"System Error: {str(e)}"
+
+
+class UpdateTask(BaseTool):
+    @property
+    def name(self) -> str:
+        return "UpdateTask"
+
+    @property
+    def description(self) -> str:
+        return "Updates an existing task. If you don't know the task ID, use GetTasks to check it."
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            'type': 'object',
+            'properties': {
+                'task_id': {
+                    'type': 'string',
+                    'description':
+                        "ID of the task to update. Required. Don't guess the ID if you don't know it, use GetTasks."
+                },
+                'content': {
+                    'type': 'string',
+                    'description': 'Updated task content. Omit this field to keep it unchanged.'
+                },
+                'description': {
+                    'type': 'string',
+                    'description': 'Updated task description. Omit this field to keep it unchanged.'
+                },
+                'priority': {
+                    'type': 'integer',
+                    'description': 'Updated task priority (1-4, where 4 is highest). '
+                                   'Omit this field to keep it unchanged.',
+                    'enum': [1, 2, 3, 4],
+                },
+                'due_string': {
+                    'type': 'string',
+                    'description': 'Natural language date/time (e.g., "today", "tomorrow", "next Monday at 10am") '
+                                   'or date string (RFC 3339 format or similar). Omit this field to keep it unchanged.'
+                }
+
+            },
+            'required': ['task_id']
+        }
+
+    def execute(self, **kwargs) -> str:
+        task_id = kwargs.get('task_id')
+        payload = {k: v for k, v in kwargs.items() if v is not None and k != 'task_id'}
+        if not payload:
+            return "No data to update"
+        try:
+            r = requests.post(
+                f'https://api.todoist.com/api/v1/tasks/{task_id}',
+                headers={
+                    'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
+                },
+                json=payload
+            )
+            if r.status_code == 200:
+                return f"Successfully updated task (ID: {task_id})."
+            else:
+                return f"Error updating task {task_id}: {r.status_code} - {r.text}"
+        except Exception as e:
+            return f"System Error: {str(e)}"
