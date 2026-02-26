@@ -1,9 +1,6 @@
 import requests
-import re
 from django.conf import settings
 from chat.tools.base import BaseTool
-from chat.models import SystemPrompt, AIModel
-from chat.services.llm_factory import OpenAIService
 
 
 class CreateTask(BaseTool):
@@ -22,12 +19,14 @@ class CreateTask(BaseTool):
             'properties': {
                 'content': {
                     'type': 'string',
-                    'description': 'The core task content ONLY (e.g., "Buy milk"). '
+                    'description': 'A short, concise TITLE of the task. '
                                    'Do NOT include date, time, or priority here.'
                 },
                 'description': {
                     'type': 'string',
-                    'description': 'Additional details or context. Do NOT include date, time, or priority here.'
+                    'description': "If you don't have any additional, necessary information beyond the title itself, "
+                                   "you MUST leave this field blank (null/empty). "
+                                   "NEVER copy the contents of the 'content' field here."
                 },
                 'priority': {
                     'type': 'integer',
@@ -45,30 +44,18 @@ class CreateTask(BaseTool):
         }
 
     def execute(self, **kwargs) -> str:
-        content = kwargs.get('content')
-        description = kwargs.get('description')
-        priority = kwargs.get('priority')
-        due_string = kwargs.get('due_string')
-
         print(f"DEBUG TOOL INPUT: {kwargs}")
-
-        payload = {'content': content}
-        if description:
-            payload['description'] = description
-        if priority:
-            payload['priority'] = priority
-        if due_string:
-            payload['due_string'] = due_string
+        payload = {k: v for k, v in kwargs.items() if v is not None}
 
         try:
             r = requests.post(
-                'https://api.todoist.com/rest/v2/tasks',
+                'https://api.todoist.com/api/v1/tasks',
                 headers={
                     'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
                 },
                 json=payload
             )
-            if r.status_code == 200:
+            if r.status_code in [200, 201]:
                 data = r.json()
                 return f"Task created. ID: {data['id']}, Content: {data['content']}, " \
                        f"Priority: {data.get('priority', 'Default')}"
@@ -85,7 +72,7 @@ class GetTasks(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Retrieve active tasks. [READ-ONLY] This tool DOES NOT remove or modify any tasks."
+        return "Retrieve active tasks."
 
     @property
     def parameters(self) -> dict:
@@ -94,8 +81,12 @@ class GetTasks(BaseTool):
             'properties': {
                 'filter': {
                     'type': 'string',
-                    'description':
-                        "Filter criteria, e.g., 'today', 'overdue', 'priority 1'. Leave empty for all active tasks."
+                    'description': 'Filter by any supported filter (the filter field only accepts native '
+                                   'Todoist filters, e.g., "today", "tomorrow", "overdue"...). '
+                                   'Multiple filters (using the comma , operator) are not supported. '
+                                   'If the user asks to search for specific keywords, topics, '
+                                   'or contents (e.g., "shopping"), YOU MUST leave this field empty, fetch all tasks, '
+                                   'and find the matching tasks yourself.'
                 },
             },
             'required': []
@@ -103,28 +94,54 @@ class GetTasks(BaseTool):
 
     def execute(self, **kwargs) -> str:
         filters = kwargs.get('filter')
-        payload = {'filter': filters} if filters else None
+        all_tasks = []
+        cursor = None
+        if filters:
+            try:
+                r = requests.get(
+                    'https://api.todoist.com/api/v1/tasks/filter',
+                    headers={
+                        'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
+                    },
+                    params={'query': filters}
+                )
+                all_tasks.extend(r.json().get('results', []))
+            except Exception as e:
+                return f"System Error: {str(e)}"
+        else:
+            try:
+                while True:
+                    r = requests.get(
+                        'https://api.todoist.com/api/v1/tasks',
+                        headers={
+                            'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
+                        },
+                        params={
+                            'cursor': cursor,
+                            'limit': 20
+                        }
+                    )
+                    response_data = r.json()
+                    tasks = response_data.get('results', [])
+                    all_tasks.extend(tasks)
+                    next_cursor = response_data.get('next_cursor')
+                    print(f"DEBUG: Page fetched. Cursor is: {cursor}")
+                    if not next_cursor:
+                        break
+                    cursor = next_cursor
+            except Exception as e:
+                return f"System Error: {str(e)}"
 
-        print(f"DEBUG TOOL INPUT: {kwargs}")
-
-        try:
-            r = requests.get(
-                'https://api.todoist.com/rest/v2/tasks',
-                headers={
-                    'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
-                },
-                params=payload
-            )
-        except Exception as e:
-            return f"System Error: {str(e)}"
         if r.status_code == 200:
-            tasks = r.json()
-            return "\n".join(
-                [
-                    f"ID:{task['id']}, {task['content']}, {task['due']['date'] if task['due'] else 'No deadline.'}, "
-                    f"Priority:{task['priority']}" for task in tasks
-                ]
-            )
+            tasks = all_tasks
+            tasks_list = []
+            for task in tasks:
+                due = 'no deadline'
+                if task['due']:
+                    due = task['due']['date']
+                tasks_list.append(f"[ID:{task['id']}] {task['content']}, Due: {due}, Priority:{task['priority']}")
+            formatted_tasks = "\n".join(tasks_list)
+            return formatted_tasks
         else:
             return f"Error {r.status_code}: {r.text}"
 
@@ -136,84 +153,36 @@ class CloseTask(BaseTool):
 
     @property
     def description(self) -> str:
-        return "[ACTION] Permanently removes/closes a task from the list. " \
-               "Use this whenever user wants to delete/finish something."
+        return "Mark task as completed / Close task. If you don't know the task ID, use GetTasks to check it."
 
     @property
     def parameters(self) -> dict:
         return {
             'type': 'object',
             'properties': {
-                'task_name': {
+                'task_id': {
                     'type': 'string',
                     'description':
-                        "The content/name of the task to close (e.g. 'Buy milk'). Required."
+                        "ID of the task to close. Required. Don't guess the ID if you don't know it, use GetTasks."
                 },
             },
-            'required': ['task_name']
+            'required': ['task_id']
         }
 
     def execute(self, **kwargs) -> str:
-        task_name = kwargs.get('task_name')
-        if not task_name:
-            return "Error: Argument 'task_name' is missing. Please provide the name of the task you want to close."
-
-        print(f"DEBUG TOOL INPUT: {kwargs}")
-
-        try:
-            r = requests.get(
-                'https://api.todoist.com/rest/v2/tasks',
-                headers={
-                    'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
-                }
-            )
-            if r.status_code != 200:
-                return f"Error {r.status_code}: {r.text}"
-            tasks_dict = r.json()
-        except Exception as e:
-            return f"System Error: {str(e)}"
-
-        tasks = "\n".join(
-            [f"ID:{task['id']}, {task['content']}" for task in tasks_dict]
-        )
-
-        print(f'DEBUG TASKS: {tasks}')
-
-        system_prompt = SystemPrompt.get_active_prompt(SystemPrompt.PromptType.TOOL_TODOIST)[0]
-        context = [{
-            "role": "system",
-            "content": f"{system_prompt}\n\n"
-                       f"User Query: '{task_name}'\n\n"
-                       f"Tasks List:\n{tasks}"
-        }]
-
-        model_name = AIModel.get_active_model_name(AIModel.TargetType.TOOL_TODOIST)
-        llm_service = OpenAIService(model_name=model_name)
-        raw_task_id = llm_service.get_response(context).content.strip()
-
-        print(f'DEBUG AI FOUND ID: {raw_task_id}')
-
-        match = re.search(r'\d+', raw_task_id)
-        if match:
-            task_id = match.group()
-        else:
-            return f"I couldn't find a task matching '{task_name}' on your list (AI returned: {raw_task_id})."
-
-        real_task_content = "Unknown task"
-        for t in tasks_dict:
-            if str(t['id']) == str(task_id):
-                real_task_content = t['content']
-                break
+        task_id = kwargs.get('task_id')
+        if not task_id:
+            return "Error: Argument 'task_id' is missing. Please provide the ID of the task you want to close."
 
         try:
             r = requests.post(
-                f'https://api.todoist.com/rest/v2/tasks/{task_id}/close',
+                f'https://api.todoist.com/api/v1/tasks/{task_id}/close',
                 headers={
                     'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
                 }
             )
-            if r.status_code == 204:
-                return f"Successfully closed task '{real_task_content}' (ID: {task_id})."
+            if r.status_code in [200, 204]:
+                return f"Successfully closed task (ID: {task_id})."
             else:
                 return f"Error closing task {task_id}: {r.status_code} - {r.text}"
         except Exception as e:
