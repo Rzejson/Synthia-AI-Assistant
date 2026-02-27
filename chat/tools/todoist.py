@@ -251,3 +251,45 @@ class UpdateTask(BaseTool):
                 return f"Error updating task {task_id}: {r.status_code} - {r.text}"
         except Exception as e:
             return f"System Error: {str(e)}"
+
+
+class DeleteTask(BaseTool):
+    @property
+    def name(self) -> str:
+        return "DeleteTask"
+
+    @property
+    def description(self) -> str:
+        return "Delete task (if unnecessary or outdated). If you don't know the task ID, use GetTasks to check it."
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            'type': 'object',
+            'properties': {
+                'task_id': {
+                    'type': 'string',
+                    'description':
+                        "ID of the task to delete. Required. Don't guess the ID if you don't know it, use GetTasks."
+                },
+            },
+            'required': ['task_id']
+        }
+
+    def execute(self, **kwargs) -> str:
+        task_id = kwargs.get('task_id')
+        if not task_id:
+            return "Error: Argument 'task_id' is missing. Please provide the ID of the task you want to delete."
+        try:
+            r = requests.delete(
+                f"https://api.todoist.com/api/v1/tasks/{task_id}",
+                headers={
+                    'Authorization': f"Bearer {settings.TODOIST_API_KEY}"
+                }
+            )
+            if r.status_code in [200, 204]:
+                return f"Successfully deleted task (ID: {task_id})."
+            else:
+                return f"Error deleting task {task_id}: {r.status_code} - {r.text}"
+        except Exception as e:
+            return f"System Error: {str(e)}"
