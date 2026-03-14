@@ -1,3 +1,4 @@
+import asyncio
 import telegram.constants
 import io
 from asgiref.sync import sync_to_async
@@ -66,7 +67,7 @@ class Command(BaseCommand):
 
         run_async = sync_to_async(self.process_telegram_message)
         response = await run_async(user_id, user_text)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+        await self.send_smart_message(update, context, response)
 
     async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -104,7 +105,15 @@ class Command(BaseCommand):
 
         run_async = sync_to_async(self.process_telegram_message)
         response = await run_async(user_id, transcription)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+        await self.send_smart_message(update, context, response)
+
+
+    async def send_smart_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message_text):
+        split_message = message_splitter(message_text)
+        for message in split_message:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+            await asyncio.sleep(0.3)
+
 
     def handle(self, *args, **options):
         token = settings.TELEGRAM_BOT_TOKEN
@@ -117,3 +126,25 @@ class Command(BaseCommand):
         print('DEBUG: Bot is listening')
 
         app.run_polling()
+
+
+def message_splitter(text):
+    text_to_split = text
+    split_text = []
+    while len(text_to_split) > 4096:
+        part_of_text = text_to_split[:4096]
+        cut_index = part_of_text.rfind('\n')
+        if cut_index == -1:
+            cut_index = part_of_text.rfind(' ')
+            if cut_index == -1:
+                split_text.append(part_of_text)
+                text_to_split = text_to_split[4096:]
+            else:
+                split_text.append(part_of_text[:cut_index])
+                text_to_split = text_to_split[cut_index + 1:]
+        else:
+            split_text.append(part_of_text[:cut_index])
+            text_to_split = text_to_split[cut_index+1:]
+    if text_to_split:
+        split_text.append(text_to_split)
+    return split_text
