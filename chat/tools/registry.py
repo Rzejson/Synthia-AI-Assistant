@@ -1,5 +1,6 @@
 from chat.tools.calculator import CalculatorTool
 from chat.tools.todoist import CreateTask, GetTasks, CloseTask, UpdateTask, DeleteTask
+from chat.tools.memory import SaveMemory
 
 
 class ToolRegistry:
@@ -10,6 +11,7 @@ class ToolRegistry:
         get_tasks_todo = GetTasks()
         update_todo = UpdateTask()
         delete_todo = DeleteTask()
+        save_memory = SaveMemory()
 
         self.tools = {
             calc.name: calc,
@@ -17,7 +19,8 @@ class ToolRegistry:
             close_task.name: close_task,
             get_tasks_todo.name: get_tasks_todo,
             update_todo.name: update_todo,
-            delete_todo.name: delete_todo
+            delete_todo.name: delete_todo,
+            save_memory.name: save_memory
         }
 
     def get_tool(self, name: str):
